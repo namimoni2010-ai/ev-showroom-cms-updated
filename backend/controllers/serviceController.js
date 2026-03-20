@@ -5,16 +5,27 @@ const Payment = require('../models/Payment');
 
 const addService = async (req, res) => {
   try {
-    const { customerId, vehicleName, kmRun, serviceType, labourCost, spareItems, otherCharges, paidAmount, serviceDate, paymentMode } = req.body;
-    const customer = await Customer.findById(customerId);
+    const {
+      customerId, vehicleName, kmRun, serviceType,
+      labourCost, spareItems, otherCharges,
+      discount, paidAmount, serviceDate, paymentMode
+    } = req.body;
 
+    const customer = await Customer.findById(customerId);
     const items = Array.isArray(spareItems) ? spareItems : [];
     const charges = Array.isArray(otherCharges) ? otherCharges : [];
 
-    const spareCost = items.reduce((sum, item) => sum + (parseFloat(item.sellingPrice) || 0) * (parseFloat(item.quantity) || 1), 0);
+    const spareCost = items.reduce((sum, item) =>
+      sum + (parseFloat(item.sellingPrice) || 0) * (parseFloat(item.quantity) || 1), 0);
     const labour = parseFloat(labourCost) || 0;
-    const otherChargesTotal = charges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
-    const totalBill = labour + spareCost + otherChargesTotal;
+    const otherChargesTotal = charges.reduce((sum, c) =>
+      sum + (parseFloat(c.amount) || 0), 0);
+
+    const grossTotal = labour + spareCost + otherChargesTotal;
+    const discountAmt = parseFloat(discount) || 0;
+    const discountedTotal = Math.max(0, grossTotal - discountAmt);
+    const totalBill = discountedTotal;
+
     const paid = parseFloat(paidAmount) || 0;
     const pending = totalBill - paid;
 
@@ -35,6 +46,9 @@ const addService = async (req, res) => {
       spareCost,
       otherCharges: charges,
       otherChargesTotal,
+      grossTotal,
+      discount: discountAmt,
+      discountedTotal,
       totalBill,
       paidAmount: paid,
       pendingAmount: pending < 0 ? 0 : pending,
@@ -45,7 +59,6 @@ const addService = async (req, res) => {
       paymentCompletionDate: paymentStatus === 'Completed' ? new Date() : undefined
     });
 
-    // Save initial payment record if paid > 0
     if (paid > 0) {
       await Payment.create({
         serviceId: service._id,
@@ -57,7 +70,6 @@ const addService = async (req, res) => {
       });
     }
 
-    // Auto-decrement spare stock
     for (const item of items) {
       if (item.spareName && item.quantity > 0) {
         await Spare.findOneAndUpdate(
@@ -75,7 +87,9 @@ const addService = async (req, res) => {
 
 const getServices = async (req, res) => {
   try {
-    const services = await Service.find().populate('customerId', 'name phone').sort({ createdAt: -1 });
+    const services = await Service.find()
+      .populate('customerId', 'name phone')
+      .sort({ createdAt: -1 });
     res.json(services);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -84,9 +98,11 @@ const getServices = async (req, res) => {
 
 const getServiceById = async (req, res) => {
   try {
-    const service = await Service.findById(req.params.id).populate('customerId', 'name phone');
+    const service = await Service.findById(req.params.id)
+      .populate('customerId', 'name phone');
     if (!service) return res.status(404).json({ message: 'Service not found' });
-    const payments = await Payment.find({ serviceId: req.params.id }).sort({ paymentDate: 1 });
+    const payments = await Payment.find({ serviceId: req.params.id })
+      .sort({ paymentDate: 1 });
     res.json({ service, payments });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -95,14 +111,14 @@ const getServiceById = async (req, res) => {
 
 const getServicesByCustomer = async (req, res) => {
   try {
-    const services = await Service.find({ customerId: req.params.customerId }).sort({ createdAt: -1 });
+    const services = await Service.find({ customerId: req.params.customerId })
+      .sort({ createdAt: -1 });
     res.json(services);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// Add installment payment
 const addPayment = async (req, res) => {
   try {
     const { amount, method, paymentDate, note } = req.body;
@@ -139,7 +155,8 @@ const addPayment = async (req, res) => {
 
 const getPaymentHistory = async (req, res) => {
   try {
-    const payments = await Payment.find({ serviceId: req.params.id }).sort({ paymentDate: 1 });
+    const payments = await Payment.find({ serviceId: req.params.id })
+      .sort({ paymentDate: 1 });
     res.json(payments);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -185,4 +202,7 @@ const deleteService = async (req, res) => {
   }
 };
 
-module.exports = { addService, getServices, getServiceById, getServicesByCustomer, addPayment, getPaymentHistory, updateServicePayment, updateService, deleteService };
+module.exports = {
+  addService, getServices, getServiceById, getServicesByCustomer,
+  addPayment, getPaymentHistory, updateServicePayment, updateService, deleteService
+};
