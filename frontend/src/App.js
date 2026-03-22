@@ -10,6 +10,7 @@ import ViewCustomer from './pages/ViewCustomer';
 import VehicleStock from './pages/VehicleStock';
 import SpareStock from './pages/SpareStock';
 import Payments from './pages/Payments';
+import Invoice from './pages/Invoice';
 import Sidebar from './components/Sidebar';
 
 const PrivateLayout = ({ children }) => {
@@ -36,6 +37,7 @@ function App() {
         <Route path="/service" element={<PrivateLayout><Service /></PrivateLayout>} />
         <Route path="/payments" element={<PrivateLayout><Payments /></PrivateLayout>} />
         <Route path="/view-customer" element={<PrivateLayout><ViewCustomer /></PrivateLayout>} />
+        <Route path="/invoice" element={<PrivateLayout><Invoice /></PrivateLayout>} />
         <Route path="/vehicle-stock" element={<PrivateLayout><VehicleStock /></PrivateLayout>} />
         <Route path="/spare-stock" element={<PrivateLayout><SpareStock /></PrivateLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
