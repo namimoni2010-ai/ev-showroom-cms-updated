@@ -61,6 +61,38 @@ export default function SpareStock() {
 
   return (
     <div>
+      {/* Low Stock Alert Banner */}
+      {!fetchLoading && lowCount > 0 && (
+        <div className="mb-5 bg-orange-900/20 border border-orange-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-3 h-3 bg-orange-500 rounded-full animate-pulse"></span>
+            <h2 className="text-base font-bold text-orange-400">⚠️ Low Spare Parts Stock Alert</h2>
+            <span className="text-xs bg-orange-900/50 text-orange-400 px-2 py-0.5 rounded-full border border-orange-800">
+              {lowCount} item{lowCount !== 1 ? 's' : ''} low
+            </span>
+            {outCount > 0 && (
+              <span className="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded-full border border-red-800">
+                {outCount} out of stock
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {spares.filter(s => s.quantity <= (s.minStockLevel ?? 5)).map(s => (
+              <div key={s._id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${s.quantity === 0 ? 'bg-red-900/30 border border-red-800' : 'bg-orange-900/30 border border-orange-800'}`}>
+                <div>
+                  <p className="text-white text-xs font-semibold">{s.spareName}</p>
+                  <p className="text-slate-400 text-xs">Min: {s.minStockLevel ?? 5}</p>
+                </div>
+                <div className="text-right">
+                  <p className={`font-bold text-lg ${s.quantity === 0 ? 'text-red-400' : 'text-orange-400'}`}>{s.quantity}</p>
+                  <p className="text-xs" style={{ color: s.quantity === 0 ? '#f87171' : '#fb923c' }}>{s.quantity === 0 ? '❌ Out' : '⚠ Low'}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="page-title">Spare Parts Stock</h1>
@@ -80,30 +112,6 @@ export default function SpareStock() {
         </div>
         <div className="card"><p className="text-slate-400 text-sm">Stock Value</p><p className="text-2xl font-bold text-emerald-400 mt-1">{fmt(totalValue)}</p></div>
       </div>
-
-      {/* Low Stock Banner */}
-      {lowCount > 0 && (
-        <div className="bg-orange-900/20 border border-orange-800 rounded-xl p-4 mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="animate-pulse text-xl">⚠️</span>
-            <h3 className="text-orange-400 font-semibold">{lowCount} item(s) at or below minimum stock level</h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {spares.filter(s => s.quantity <= (s.minStockLevel ?? 5)).map(s => (
-              <div key={s._id} className="bg-orange-900/20 rounded-lg px-3 py-2 border border-orange-800/50 flex justify-between items-center">
-                <div>
-                  <p className="text-white text-sm font-medium">{s.spareName}</p>
-                  <p className="text-slate-400 text-xs">Min: {s.minStockLevel ?? 5}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-orange-400 font-bold text-xl">{s.quantity}</p>
-                  <p className="text-blue-400 text-xs">Need: {Math.max(0, (s.minStockLevel ?? 5) - s.quantity)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Form */}
       {showForm && (
@@ -132,7 +140,7 @@ export default function SpareStock() {
               <div>
                 <label className="label">🔔 Min Stock Level <span className="text-slate-500 font-normal text-xs">(alert threshold)</span></label>
                 <input name="minStockLevel" type="number" value={form.minStockLevel} onChange={handleChange} placeholder="5" className="input-field" />
-                <p className="text-slate-500 text-xs mt-1">Dashboard alert shows when qty ≤ this value</p>
+                <p className="text-slate-500 text-xs mt-1">Alert shows when qty ≤ this value</p>
               </div>
             </div>
             {form.buyingPrice && form.sellingPrice && (

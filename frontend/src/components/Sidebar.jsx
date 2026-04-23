@@ -9,6 +9,7 @@ const navItems = [
   { path: '/payments', label: 'Payments', icon: '💳' },
   { path: '/view-customer', label: 'View Customer', icon: '🔍' },
   { path: '/invoice', label: 'Invoice', icon: '🧾' },
+  { path: '/invoice-history', label: 'Invoice History', icon: '📋' },
   { path: '/vehicle-stock', label: 'Vehicle Stock', icon: '📦' },
   { path: '/spare-stock', label: 'Spare Stock', icon: '⚙️' },
 ];

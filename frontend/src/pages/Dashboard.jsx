@@ -49,7 +49,7 @@ export default function Dashboard() {
     return <span className="badge-pending text-xs">⏳ Pending</span>;
   };
 
-  const hasLowStock = stats?.lowVehicleStock?.length > 0 || stats?.lowSpareStock?.length > 0;
+  const hasLowStock = stats?.lowVehicleStock?.length > 0;
   const allReminders = [
     ...(stats?.serviceReminders || []).map(r => ({ ...r, source: 'service' })),
     ...(stats?.salesReminders || [])
@@ -68,26 +68,26 @@ export default function Dashboard() {
         <StatCard icon="💰" label="Total Pending" value={fmt(stats?.totalPending)} color="bg-amber-900/50" sub="All transactions" />
       </div>
 
-      {/* 🚨 Low Stock Alerts */}
+      {/* Vehicle Low Stock Alert only */}
       {hasLowStock && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
             <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
             <h2 className="text-lg font-bold text-red-400">🔔 Low Stock Alerts</h2>
             <span className="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded-full border border-red-800">
-              {(stats?.lowVehicleStock?.length || 0) + (stats?.lowSpareStock?.length || 0)} items
+              {stats?.lowVehicleStock?.length || 0} items
             </span>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-
-            {/* Vehicle Low Stock */}
             {stats?.lowVehicleStock?.length > 0 && (
               <div className="bg-red-900/20 border border-red-800 rounded-xl p-4">
                 <h3 className="text-red-400 font-semibold mb-3">🚗 Low Vehicle Stock</h3>
                 <table className="w-full text-sm">
                   <thead><tr className="text-slate-400 text-xs">
-                    <th className="text-left pb-2">Vehicle</th><th className="text-left pb-2">Type</th>
-                    <th className="text-center pb-2">Qty</th><th className="text-left pb-2">Status</th>
+                    <th className="text-left pb-2">Vehicle</th>
+                    <th className="text-left pb-2">Type</th>
+                    <th className="text-center pb-2">Qty</th>
+                    <th className="text-left pb-2">Status</th>
                   </tr></thead>
                   <tbody>
                     {stats.lowVehicleStock.map(v => (
@@ -98,35 +98,6 @@ export default function Dashboard() {
                         <td className="py-2">
                           <span className={v.quantity === 0 ? 'text-xs text-red-400 bg-red-900/40 border border-red-800 px-2 py-0.5 rounded-full' : 'badge-pending'}>
                             {v.quantity === 0 ? '❌ Out of Stock' : '⚠ Low Stock'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Spare Low Stock - uses admin-defined minStockLevel */}
-            {stats?.lowSpareStock?.length > 0 && (
-              <div className="bg-orange-900/20 border border-orange-800 rounded-xl p-4">
-                <h3 className="text-orange-400 font-semibold mb-3">⚙️ Low Spare Parts Stock</h3>
-                <table className="w-full text-sm">
-                  <thead><tr className="text-slate-400 text-xs">
-                    <th className="text-left pb-2">Item</th><th className="text-center pb-2">Qty</th>
-                    <th className="text-center pb-2">Min Level</th><th className="text-center pb-2">Reorder</th>
-                    <th className="text-left pb-2">Status</th>
-                  </tr></thead>
-                  <tbody>
-                    {stats.lowSpareStock.map(s => (
-                      <tr key={s._id} className="border-t border-orange-900/30">
-                        <td className="py-2 text-white font-medium">{s.spareName}</td>
-                        <td className="py-2 text-center text-orange-400 font-bold text-lg">{s.quantity}</td>
-                        <td className="py-2 text-center text-slate-400">{s.minStockLevel}</td>
-                        <td className="py-2 text-center text-blue-400 font-semibold">{s.reorderQty}</td>
-                        <td className="py-2">
-                          <span className={s.quantity === 0 ? 'text-xs text-red-400 bg-red-900/40 border border-red-800 px-2 py-0.5 rounded-full' : 'text-xs text-orange-400 bg-orange-900/40 border border-orange-800 px-2 py-0.5 rounded-full'}>
-                            {s.quantity === 0 ? '❌ Out of Stock' : '⚠ Low Stock'}
                           </span>
                         </td>
                       </tr>
@@ -174,7 +145,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Pending Services - with date and status */}
+        {/* Pending Services */}
         <div className="card">
           <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <span className="w-2 h-2 bg-red-400 rounded-full"></span>
@@ -247,8 +218,10 @@ export default function Dashboard() {
                         {fmtDate(r.nextServiceDate)}
                       </td>
                       <td className="px-4 py-3">
-                        {overdue ? <span className="badge-pending">⚠ Overdue ({Math.abs(daysLeft)}d)</span>
-                          : dueSoon ? <span className="text-xs text-amber-400 bg-amber-900/30 border border-amber-800 px-2.5 py-0.5 rounded-full">🔔 {daysLeft}d left</span>
+                        {overdue
+                          ? <span className="badge-pending">⚠ Overdue ({Math.abs(daysLeft)}d)</span>
+                          : dueSoon
+                          ? <span className="text-xs text-amber-400 bg-amber-900/30 border border-amber-800 px-2.5 py-0.5 rounded-full">🔔 {daysLeft}d left</span>
                           : <span className="text-xs text-slate-400 bg-slate-700/50 border border-slate-600 px-2.5 py-0.5 rounded-full">📅 {daysLeft}d</span>}
                       </td>
                     </tr>

@@ -1,3 +1,4 @@
+// frontend/src/App.js — REPLACE ENTIRE FILE
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
@@ -11,6 +12,7 @@ import VehicleStock from './pages/VehicleStock';
 import SpareStock from './pages/SpareStock';
 import Payments from './pages/Payments';
 import Invoice from './pages/Invoice';
+import InvoiceHistory from './pages/InvoiceHistory';
 import Sidebar from './components/Sidebar';
 
 const PrivateLayout = ({ children }) => {
@@ -38,6 +40,7 @@ function App() {
         <Route path="/payments" element={<PrivateLayout><Payments /></PrivateLayout>} />
         <Route path="/view-customer" element={<PrivateLayout><ViewCustomer /></PrivateLayout>} />
         <Route path="/invoice" element={<PrivateLayout><Invoice /></PrivateLayout>} />
+        <Route path="/invoice-history" element={<PrivateLayout><InvoiceHistory /></PrivateLayout>} />
         <Route path="/vehicle-stock" element={<PrivateLayout><VehicleStock /></PrivateLayout>} />
         <Route path="/spare-stock" element={<PrivateLayout><SpareStock /></PrivateLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
