@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { addService, getServices, deleteService, addServicePayment, getPaymentHistory, getSpares } from '../api';
+import {
+  addService, getServices, deleteService,
+  updateService, addServicePayment, getPaymentHistory, getSpares
+} from '../api';
 import CustomerSearch from '../components/CustomerSearch';
 
 const PAYMENT_METHODS = ['Cash', 'UPI', 'Card', 'Bank Transfer'];
@@ -23,11 +26,20 @@ export default function Service() {
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState(null);
   const [expandedRow, setExpandedRow] = useState(null);
+
+  // Spare search
+  const [spareSearch, setSpareSearch] = useState({});
+  const [spareSuggestions, setSpareSuggestions] = useState({});
+  const [showSpareDrop, setShowSpareDrop] = useState({});
+
+  // Payment modal
   const [payModal, setPayModal] = useState(null);
   const [payHistory, setPayHistory] = useState([]);
   const [payForm, setPayForm] = useState(emptyPayForm);
   const [payLoading, setPayLoading] = useState(false);
+  const [paySuccess, setPaySuccess] = useState('');
 
   const fetchServices = useCallback(async () => {
     setFetchLoading(true);
@@ -41,7 +53,7 @@ export default function Service() {
 
   useEffect(() => { fetchServices(); fetchSpares(); }, [fetchServices, fetchSpares]);
 
-  // Live calculations
+  // ── Live Calculations ──────────────────────
   const labourCost = parseFloat(form.labourCost) || 0;
   const spareCost = spareRows.reduce((s, r) =>
     s + (parseFloat(r.sellingPrice) || 0) * (parseFloat(r.quantity) || 1), 0);
@@ -61,18 +73,49 @@ export default function Service() {
     return n.toLocaleDateString('en-IN');
   };
 
-  const handleSpareSelect = (idx, spareName) => {
-    const found = sparesList.find(s => s.spareName === spareName);
-    setSpareRows(spareRows.map((r, i) => i === idx
-      ? { ...r, spareId: found?._id || '', spareName, sellingPrice: found?.sellingPrice || '' }
-      : r));
+  // ── Spare Search Handlers ──────────────────
+  const handleSpareSearch = (idx, val) => {
+    setSpareSearch(prev => ({ ...prev, [idx]: val }));
+    if (!val.trim()) {
+      setSpareSuggestions(prev => ({ ...prev, [idx]: [] }));
+      setShowSpareDrop(prev => ({ ...prev, [idx]: false }));
+      return;
+    }
+    const filtered = sparesList.filter(s =>
+      s.spareName.toLowerCase().includes(val.toLowerCase())
+    );
+    setSpareSuggestions(prev => ({ ...prev, [idx]: filtered }));
+    setShowSpareDrop(prev => ({ ...prev, [idx]: true }));
   };
+
+  const handleSpareSelect = (idx, spare) => {
+    const updated = spareRows.map((r, i) => i === idx
+      ? { ...r, spareId: spare._id, spareName: spare.spareName, sellingPrice: spare.sellingPrice || '' }
+      : r
+    );
+    setSpareRows(updated);
+    setSpareSearch(prev => ({ ...prev, [idx]: spare.spareName }));
+    setShowSpareDrop(prev => ({ ...prev, [idx]: false }));
+    setSpareSuggestions(prev => ({ ...prev, [idx]: [] }));
+  };
+
   const handleSpareChange = (idx, field, val) =>
     setSpareRows(spareRows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
-  const addSpareRow = () => setSpareRows([...spareRows, emptySpare()]);
-  const removeSpareRow = (idx) =>
-    spareRows.length === 1 ? setSpareRows([emptySpare()]) : setSpareRows(spareRows.filter((_, i) => i !== idx));
 
+  const addSpareRow = () => {
+    const newIdx = spareRows.length;
+    setSpareRows([...spareRows, emptySpare()]);
+    setSpareSearch(prev => ({ ...prev, [newIdx]: '' }));
+    setSpareSuggestions(prev => ({ ...prev, [newIdx]: [] }));
+    setShowSpareDrop(prev => ({ ...prev, [newIdx]: false }));
+  };
+
+  const removeSpareRow = (idx) => {
+    if (spareRows.length === 1) { setSpareRows([emptySpare()]); return; }
+    setSpareRows(spareRows.filter((_, i) => i !== idx));
+  };
+
+  // ── Other Charges Handlers ─────────────────
   const handleChargeChange = (idx, field, val) =>
     setOtherCharges(otherCharges.map((c, i) => i === idx ? { ...c, [field]: val } : c));
   const addCharge = () => setOtherCharges([...otherCharges, emptyCharge()]);
@@ -82,31 +125,117 @@ export default function Service() {
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
   const handleCustomerSelect = (c) => setForm({ ...form, customerId: c._id, customerName: c.name });
 
+  const resetForm = () => {
+    setForm(emptyForm);
+    setSpareRows([emptySpare()]);
+    setOtherCharges([emptyCharge()]);
+    setSpareSearch({});
+    setSpareSuggestions({});
+    setShowSpareDrop({});
+    setEditId(null);
+    setSuccess('');
+    setError('');
+  };
+
+  // ── Edit Handler ───────────────────────────
+  const handleEdit = (svc) => {
+    setEditId(svc._id);
+    setForm({
+      customerId: svc.customerId?._id || svc.customerId || '',
+      customerName: svc.customerName || '',
+      vehicleName: svc.vehicleName || '',
+      kmRun: svc.kmRun || '',
+      serviceType: svc.serviceType || '',
+      labourCost: svc.labourCost || '',
+      discount: svc.discount || 0,
+      paidAmount: svc.paidAmount || 0,
+      serviceDate: svc.serviceDate ? new Date(svc.serviceDate).toISOString().split('T')[0] : '',
+      paymentMode: svc.paymentMode || 'Cash'
+    });
+
+    // Restore spare rows
+    if (svc.spareItems?.length > 0) {
+      const rows = svc.spareItems.map(item => ({
+        spareId: item.spareId || '',
+        spareName: item.spareName,
+        sellingPrice: item.sellingPrice,
+        quantity: item.quantity
+      }));
+      setSpareRows(rows);
+      const searches = {};
+      rows.forEach((r, i) => { searches[i] = r.spareName; });
+      setSpareSearch(searches);
+    } else {
+      setSpareRows([emptySpare()]);
+    }
+
+    // Restore other charges
+    if (svc.otherCharges?.length > 0) {
+      setOtherCharges(svc.otherCharges.map(c => ({ description: c.description, amount: c.amount })));
+    } else {
+      setOtherCharges([emptyCharge()]);
+    }
+
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // ── Submit Handler ─────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setSuccess('');
-    if (!form.customerId) return setError('Please select a customer');
+    if (!editId && !form.customerId) return setError('Please select a customer');
     if (!form.vehicleName) return setError('Vehicle name is required');
+
     const validSpares = spareRows.filter(r => r.spareName.trim());
     const validCharges = otherCharges.filter(c => c.description.trim() && c.amount);
+
+    const payload = {
+      ...form, labourCost, discount, paidAmount,
+      spareItems: validSpares.map(r => ({
+        spareId: r.spareId || undefined,
+        spareName: r.spareName.trim(),
+        sellingPrice: parseFloat(r.sellingPrice) || 0,
+        quantity: parseFloat(r.quantity) || 1
+      })),
+      otherCharges: validCharges.map(c => ({
+        description: c.description.trim(),
+        amount: parseFloat(c.amount) || 0
+      }))
+    };
+
     setLoading(true);
     try {
-      await addService({
-        ...form, labourCost, discount, paidAmount,
-        spareItems: validSpares.map(r => ({
-          spareId: r.spareId || undefined,
-          spareName: r.spareName.trim(),
-          sellingPrice: parseFloat(r.sellingPrice) || 0,
-          quantity: parseFloat(r.quantity) || 1
-        })),
-        otherCharges: validCharges.map(c => ({
-          description: c.description.trim(),
-          amount: parseFloat(c.amount) || 0
-        }))
-      });
-      setSuccess('Service saved! Spare stock updated automatically.');
-      setForm(emptyForm);
-      setSpareRows([emptySpare()]);
-      setOtherCharges([emptyCharge()]);
+      if (editId) {
+        // Recalculate totals on edit
+        const sp = payload.spareItems.reduce((s, i) => s + i.sellingPrice * i.quantity, 0);
+        const lab = parseFloat(payload.labourCost) || 0;
+        const oth = payload.otherCharges.reduce((s, c) => s + c.amount, 0);
+        const gross = sp + lab + oth;
+        const disc = parseFloat(payload.discount) || 0;
+        const total = Math.max(0, gross - disc);
+        const paid = parseFloat(payload.paidAmount) || 0;
+        const pending = Math.max(0, total - paid);
+        let status = 'Pending';
+        if (paid >= total && total > 0) status = 'Completed';
+        else if (paid > 0) status = 'Partially Paid';
+
+        await updateService(editId, {
+          ...payload,
+          spareCost: sp,
+          otherChargesTotal: oth,
+          grossTotal: gross,
+          discountedTotal: total,
+          totalBill: total,
+          pendingAmount: pending,
+          paymentStatus: status,
+          paymentCompletionDate: status === 'Completed' ? new Date() : undefined
+        });
+        setSuccess('Service record updated successfully!');
+      } else {
+        await addService(payload);
+        setSuccess('Service saved! Spare stock updated automatically.');
+      }
+      resetForm();
       setShowForm(false);
       fetchServices();
     } catch (err) {
@@ -120,9 +249,9 @@ export default function Service() {
     try { await deleteService(id); fetchServices(); } catch { alert('Delete failed'); }
   };
 
+  // ── Payment Modal ──────────────────────────
   const openPayModal = async (svc) => {
-    setPayModal(svc);
-    setPayForm(emptyPayForm);
+    setPayModal(svc); setPayForm(emptyPayForm); setPaySuccess('');
     try { const { data } = await getPaymentHistory(svc._id); setPayHistory(data); }
     catch { setPayHistory([]); }
   };
@@ -133,9 +262,10 @@ export default function Service() {
     setPayLoading(true);
     try {
       await addServicePayment(payModal._id, payForm);
+      setPaySuccess('Payment recorded!');
+      setPayForm(emptyPayForm);
       const { data: hist } = await getPaymentHistory(payModal._id);
       setPayHistory(hist);
-      setPayForm(emptyPayForm);
       await fetchServices();
       const updated = await getServices();
       const found = updated.data.find(s => s._id === payModal._id);
@@ -158,34 +288,43 @@ export default function Service() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="page-title">Service</h1>
-          <p className="text-slate-400 text-sm">Billing · Discount · Multi-payment · Spare stock auto-update</p>
+          <p className="text-slate-400 text-sm">Billing · Spare search · Edit records · Multi-payment tracking</p>
         </div>
         <button onClick={() => {
-          setShowForm(!showForm);
-          setForm(emptyForm);
-          setSpareRows([emptySpare()]);
-          setOtherCharges([emptyCharge()]);
+          if (showForm && !editId) { setShowForm(false); resetForm(); }
+          else if (showForm && editId) { setShowForm(false); resetForm(); }
+          else { resetForm(); setShowForm(true); }
         }} className="btn-primary">
           {showForm ? '✕ Cancel' : '+ New Service'}
         </button>
       </div>
 
+      {/* ── SERVICE FORM ── */}
       {showForm && (
         <div className="card mb-6">
-          <h2 className="text-lg font-semibold text-white mb-5">New Service Record</h2>
+          <h2 className="text-lg font-semibold text-white mb-2">
+            {editId ? '✏️ Edit Service Record' : 'New Service Record'}
+          </h2>
+          {editId && <p className="text-amber-400 text-xs mb-4">⚠ Editing existing record — spare stock will NOT be re-deducted on update</p>}
           {success && <div className="bg-emerald-900/30 border border-emerald-700 text-emerald-400 px-4 py-3 rounded-lg mb-4 text-sm">✓ {success}</div>}
           {error && <div className="bg-red-900/30 border border-red-700 text-red-400 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-6">
 
-            {/* Section 1 - Customer & Vehicle */}
+            {/* ① Customer & Vehicle */}
             <div>
               <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">① Customer & Vehicle Details</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="label">Customer Name <span className="text-red-400">*</span></label>
-                  <CustomerSearch onSelect={handleCustomerSelect} placeholder="Search customer..." />
-                  {form.customerName && <p className="text-emerald-400 text-xs mt-1">✓ {form.customerName}</p>}
+                  {editId ? (
+                    <input value={form.customerName} disabled className="input-field opacity-60" />
+                  ) : (
+                    <>
+                      <CustomerSearch onSelect={handleCustomerSelect} placeholder="Search customer by name or phone..." />
+                      {form.customerName && <p className="text-emerald-400 text-xs mt-1">✓ Selected: {form.customerName}</p>}
+                    </>
+                  )}
                 </div>
                 <div>
                   <label className="label">Vehicle Name <span className="text-red-400">*</span></label>
@@ -198,7 +337,7 @@ export default function Service() {
                     placeholder="Odometer reading" className="input-field" />
                 </div>
                 <div>
-                  <label className="label">Service Type</label>
+                  <label className="label">Service Type / Description</label>
                   <input name="serviceType" value={form.serviceType} onChange={handleChange}
                     placeholder="e.g. Full service + brake check" className="input-field" />
                 </div>
@@ -216,54 +355,89 @@ export default function Service() {
               </div>
             </div>
 
-            {/* Section 2 - Spare Parts */}
+            {/* ② Spare Parts with Search */}
             <div>
-              <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">② Spare Parts Used</p>
+              <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">
+                ② Spare Parts Used <span className="text-slate-500 normal-case font-normal">(search by name → auto-fills price)</span>
+              </p>
               <div className="border border-slate-600 rounded-xl p-4 bg-slate-700/20">
                 <div className="grid grid-cols-12 gap-2 mb-2 px-1">
-                  <div className="col-span-5 text-slate-400 text-xs font-medium">Part Name</div>
+                  <div className="col-span-5 text-slate-400 text-xs font-medium">Search & Select Part</div>
                   <div className="col-span-3 text-slate-400 text-xs font-medium">Selling Price (₹)</div>
                   <div className="col-span-2 text-slate-400 text-xs font-medium">Qty</div>
                   <div className="col-span-1 text-slate-400 text-xs font-medium text-right">Total</div>
                   <div className="col-span-1"></div>
                 </div>
-                <div className="space-y-2">
+
+                <div className="space-y-3">
                   {spareRows.map((row, idx) => {
                     const rowTotal = (parseFloat(row.sellingPrice) || 0) * (parseFloat(row.quantity) || 1);
                     return (
-                      <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                        <div className="col-span-5">
-                          <select value={row.spareName}
-                            onChange={(e) => handleSpareSelect(idx, e.target.value)}
-                            className="input-field text-sm py-2">
-                            <option value="">-- Select Part --</option>
-                            {sparesList.map(s => (
-                              <option key={s._id} value={s.spareName}>
-                                {s.spareName} (Stock: {s.quantity})
-                              </option>
-                            ))}
-                            <option value="__manual__">+ Type manually</option>
-                          </select>
-                          {row.spareName === '__manual__' && (
-                            <input className="input-field text-sm py-2 mt-1"
-                              placeholder="Enter part name"
-                              onChange={(e) => handleSpareChange(idx, 'spareName', e.target.value)} />
+                      <div key={idx} className="grid grid-cols-12 gap-2 items-start">
+                        {/* Spare Search */}
+                        <div className="col-span-5 relative">
+                          <input
+                            value={spareSearch[idx] || ''}
+                            onChange={(e) => handleSpareSearch(idx, e.target.value)}
+                            placeholder="Type spare part name..."
+                            className="input-field text-sm py-2"
+                          />
+                          {/* Suggestions Dropdown */}
+                          {showSpareDrop[idx] && spareSuggestions[idx]?.length > 0 && (
+                            <ul className="absolute z-50 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 shadow-2xl max-h-40 overflow-y-auto">
+                              {spareSuggestions[idx].map((spare) => (
+                                <li key={spare._id} onClick={() => handleSpareSelect(idx, spare)}
+                                  className="px-3 py-2 hover:bg-slate-700 cursor-pointer border-b border-slate-700/50 last:border-0">
+                                  <p className="text-white text-sm font-medium">{spare.spareName}</p>
+                                  <p className="text-slate-400 text-xs">
+                                    Stock: {spare.quantity} · Price: {fmt(spare.sellingPrice)}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {showSpareDrop[idx] && spareSearch[idx] && spareSuggestions[idx]?.length === 0 && (
+                            <div className="absolute z-50 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 px-3 py-2 text-slate-400 text-xs">
+                              No spare parts found · Price will be entered manually
+                            </div>
+                          )}
+                          {/* Show selected spare info */}
+                          {row.spareName && (
+                            <p className="text-emerald-400 text-xs mt-1">✓ {row.spareName}</p>
                           )}
                         </div>
+
+                        {/* Selling Price - auto-filled but editable */}
                         <div className="col-span-3">
-                          <input type="number" value={row.sellingPrice}
+                          <input
+                            type="number"
+                            value={row.sellingPrice}
                             onChange={(e) => handleSpareChange(idx, 'sellingPrice', e.target.value)}
-                            placeholder="Auto-filled" className="input-field text-sm py-2" />
+                            placeholder="Auto-filled"
+                            className="input-field text-sm py-2"
+                          />
+                          {row.spareName && row.sellingPrice && (
+                            <p className="text-slate-500 text-xs mt-1">Per unit</p>
+                          )}
                         </div>
+
+                        {/* Qty */}
                         <div className="col-span-2">
-                          <input type="number" min="1" value={row.quantity}
+                          <input
+                            type="number" min="1"
+                            value={row.quantity}
                             onChange={(e) => handleSpareChange(idx, 'quantity', e.target.value)}
-                            className="input-field text-sm py-2" />
+                            className="input-field text-sm py-2"
+                          />
                         </div>
-                        <div className="col-span-1 text-emerald-400 text-sm font-semibold text-right">
+
+                        {/* Row Total */}
+                        <div className="col-span-1 text-emerald-400 text-sm font-semibold text-right pt-2.5">
                           {fmt(rowTotal)}
                         </div>
-                        <div className="col-span-1 flex justify-end">
+
+                        {/* Remove */}
+                        <div className="col-span-1 flex justify-end pt-1.5">
                           <button type="button" onClick={() => removeSpareRow(idx)}
                             className="w-7 h-7 flex items-center justify-center rounded bg-red-900/40 hover:bg-red-800 text-red-400 text-xs">✕</button>
                         </div>
@@ -271,14 +445,22 @@ export default function Service() {
                     );
                   })}
                 </div>
+
                 <button type="button" onClick={addSpareRow}
-                  className="mt-3 text-emerald-400 text-sm hover:text-emerald-300 flex items-center gap-1">
+                  className="mt-4 text-emerald-400 text-sm hover:text-emerald-300 flex items-center gap-1 bg-emerald-900/20 border border-emerald-800/50 px-4 py-2 rounded-lg transition-all">
                   <span className="text-lg font-bold">+</span> Add Spare Part
                 </button>
+
+                {spareCost > 0 && (
+                  <div className="mt-3 flex justify-end">
+                    <span className="text-slate-400 text-sm mr-2">Spares Subtotal:</span>
+                    <span className="text-emerald-400 font-semibold">{fmt(spareCost)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Section 3 - Labour */}
+            {/* ③ Labour */}
             <div>
               <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">③ Labour Charges</p>
               <div className="max-w-xs">
@@ -288,7 +470,7 @@ export default function Service() {
               </div>
             </div>
 
-            {/* Section 4 - Other Charges */}
+            {/* ④ Other Charges */}
             <div>
               <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">
                 ④ Other Charges <span className="text-slate-500 normal-case font-normal">(Courier, Transport, etc.)</span>
@@ -327,11 +509,9 @@ export default function Service() {
               </div>
             </div>
 
-            {/* Section 5 - Bill Summary with Discount */}
+            {/* ⑤ Bill Summary */}
             <div className="bg-slate-700/50 border border-slate-600 rounded-xl p-5">
               <p className="text-white font-semibold mb-4">💰 Bill Summary</p>
-
-              {/* Breakdown */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="bg-slate-800 rounded-lg p-3">
                   <p className="text-slate-400 text-xs mb-1">Spares</p>
@@ -351,38 +531,32 @@ export default function Service() {
                 </div>
               </div>
 
-              {/* Discount Row */}
+              {/* Discount */}
               <div className="bg-red-900/20 border border-red-800/50 rounded-xl p-4 mb-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                   <div className="flex-1">
                     <label className="label">🏷️ Discount (₹)</label>
-                    <input
-                      name="discount"
-                      type="number"
-                      value={form.discount}
-                      onChange={handleChange}
-                      placeholder="Enter discount amount (0 for no discount)"
-                      className="input-field"
-                    />
+                    <input name="discount" type="number" value={form.discount}
+                      onChange={handleChange} placeholder="0" className="input-field" />
                   </div>
-                  <div className="bg-slate-800 rounded-xl p-4 min-w-[180px] text-right">
+                  <div className="bg-slate-800 rounded-xl p-4 min-w-[200px]">
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-slate-400">Gross Total:</span>
-                      <span className="text-white font-medium">{fmt(grossTotal)}</span>
+                      <span className="text-slate-400">Gross:</span>
+                      <span className="text-white">{fmt(grossTotal)}</span>
                     </div>
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-slate-400">Discount:</span>
-                      <span className="text-red-400 font-medium">- {fmt(discount)}</span>
+                      <span className="text-red-400">- {fmt(discount)}</span>
                     </div>
                     <div className="border-t border-slate-600 pt-2 flex justify-between">
-                      <span className="text-emerald-400 text-sm font-semibold">Total Bill:</span>
+                      <span className="text-emerald-400 font-semibold">Total Bill:</span>
                       <span className="text-emerald-400 font-bold text-xl">{fmt(totalBill)}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Payment Row */}
+              {/* Payment */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="label">Amount Paid (₹)</label>
@@ -391,8 +565,9 @@ export default function Service() {
                 </div>
                 <div className="flex flex-col justify-end">
                   <div className="bg-slate-800 rounded-lg p-3">
-                    <p className="text-slate-400 text-xs mb-1">Pending Amount</p>
-                    <p className="font-bold text-lg" style={{ color: pendingAmount > 0 ? '#fbbf24' : '#34d399' }}>
+                    <p className="text-slate-400 text-xs mb-1">Pending</p>
+                    <p className="font-bold text-lg"
+                      style={{ color: pendingAmount > 0 ? '#fbbf24' : '#34d399' }}>
                       {fmt(pendingAmount)}
                     </p>
                     <span className="text-xs mt-1 inline-block">{statusBadge(payStatus)}</span>
@@ -407,14 +582,21 @@ export default function Service() {
               </div>
             </div>
 
-            <button type="submit" disabled={loading} className="btn-primary text-base px-8 py-3">
-              {loading ? 'Saving...' : '💾 Save Service Record'}
-            </button>
+            <div className="flex gap-3">
+              <button type="submit" disabled={loading} className="btn-primary text-base px-8 py-3">
+                {loading ? 'Saving...' : editId ? '💾 Update Service Record' : '💾 Save Service Record'}
+              </button>
+              {editId && (
+                <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="btn-secondary">
+                  Cancel Edit
+                </button>
+              )}
+            </div>
           </form>
         </div>
       )}
 
-      {/* Services Table */}
+      {/* ── SERVICES TABLE ── */}
       <div className="card">
         <h2 className="text-lg font-semibold text-white mb-4">
           All Service Records ({services.length})
@@ -457,10 +639,12 @@ export default function Service() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
+                          <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }}
+                            className="btn-secondary text-xs py-1 px-2">✏️</button>
                           {s.paymentStatus !== 'Completed' && (
                             <button onClick={(e) => { e.stopPropagation(); openPayModal(s); }}
                               className="text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-1 rounded-lg">
-                              💳 Pay
+                              💳
                             </button>
                           )}
                           <button onClick={(e) => { e.stopPropagation(); openPayModal(s); }}
@@ -472,10 +656,18 @@ export default function Service() {
                         </div>
                       </td>
                     </tr>
+
+                    {/* Expanded Details */}
                     {expandedRow === s._id && (
                       <tr className="bg-slate-800/80">
                         <td colSpan={14} className="px-6 py-4">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {s.serviceType && (
+                              <div className="sm:col-span-3 bg-slate-700/50 rounded-lg p-3">
+                                <p className="text-slate-400 text-xs font-semibold mb-1">SERVICE DESCRIPTION</p>
+                                <p className="text-white text-sm">{s.serviceType}</p>
+                              </div>
+                            )}
                             {s.spareItems?.length > 0 && (
                               <div>
                                 <p className="text-slate-400 text-xs font-semibold mb-2 uppercase">Spare Parts</p>
@@ -500,19 +692,15 @@ export default function Service() {
                             )}
                             <div>
                               <p className="text-slate-400 text-xs font-semibold mb-2 uppercase">Bill Breakdown</p>
-                              <div className="bg-slate-700/60 rounded px-3 py-2 space-y-1">
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-slate-400">Gross Total</span>
-                                  <span className="text-white">{fmt(s.grossTotal || s.totalBill)}</span>
-                                </div>
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-slate-400">Discount</span>
-                                  <span className="text-red-400">- {fmt(s.discount)}</span>
-                                </div>
-                                <div className="flex justify-between text-xs border-t border-slate-600 pt-1">
+                              <div className="bg-slate-700/60 rounded px-3 py-3 space-y-1 text-xs">
+                                <div className="flex justify-between"><span className="text-slate-400">Gross Total</span><span className="text-white">{fmt(s.grossTotal || s.totalBill)}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-400">Discount</span><span className="text-red-400">- {fmt(s.discount)}</span></div>
+                                <div className="flex justify-between border-t border-slate-600 pt-1">
                                   <span className="text-emerald-400 font-semibold">Total Bill</span>
                                   <span className="text-emerald-400 font-bold">{fmt(s.totalBill)}</span>
                                 </div>
+                                <div className="flex justify-between"><span className="text-slate-400">Paid</span><span className="text-white">{fmt(s.paidAmount)}</span></div>
+                                <div className="flex justify-between"><span className="text-amber-400">Pending</span><span className="text-amber-400 font-semibold">{fmt(s.pendingAmount)}</span></div>
                               </div>
                             </div>
                           </div>
@@ -527,7 +715,7 @@ export default function Service() {
         )}
       </div>
 
-      {/* Payment Modal */}
+      {/* ── PAYMENT MODAL ── */}
       {payModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -543,12 +731,10 @@ export default function Service() {
                 <div className="bg-slate-700/50 rounded-xl p-3 text-center">
                   <p className="text-slate-400 text-xs mb-1">Total Bill</p>
                   <p className="text-white font-bold text-lg">{fmt(payModal.totalBill)}</p>
-                  {payModal.discount > 0 && (
-                    <p className="text-red-400 text-xs">Discount: {fmt(payModal.discount)}</p>
-                  )}
+                  {payModal.discount > 0 && <p className="text-red-400 text-xs">Discount: {fmt(payModal.discount)}</p>}
                 </div>
                 <div className="bg-emerald-900/30 border border-emerald-800 rounded-xl p-3 text-center">
-                  <p className="text-emerald-400 text-xs mb-1">Amount Paid</p>
+                  <p className="text-emerald-400 text-xs mb-1">Paid</p>
                   <p className="text-emerald-400 font-bold text-lg">{fmt(payModal.paidAmount)}</p>
                 </div>
                 <div className="bg-amber-900/30 border border-amber-800 rounded-xl p-3 text-center">
@@ -558,19 +744,17 @@ export default function Service() {
               </div>
 
               <div className="bg-slate-700/30 rounded-lg p-3 mb-5 flex flex-wrap gap-4 text-sm">
-                <div><span className="text-slate-400">Service Date: </span>
-                  <span className="text-white">{fmtDate(payModal.serviceDate)}</span></div>
+                <div><span className="text-slate-400">Date: </span><span className="text-white">{fmtDate(payModal.serviceDate)}</span></div>
                 <div><span className="text-slate-400">Status: </span>{statusBadge(payModal.paymentStatus)}</div>
                 {payModal.paymentCompletionDate && (
-                  <div><span className="text-slate-400">Completed On: </span>
-                    <span className="text-emerald-400 font-semibold">{fmtDate(payModal.paymentCompletionDate)}</span>
-                  </div>
+                  <div><span className="text-slate-400">Completed: </span><span className="text-emerald-400">{fmtDate(payModal.paymentCompletionDate)}</span></div>
                 )}
               </div>
 
               {payModal.paymentStatus !== 'Completed' && (
                 <div className="bg-slate-700/30 border border-slate-600 rounded-xl p-4 mb-5">
                   <h3 className="text-white font-semibold mb-3">Add Payment / Installment</h3>
+                  {paySuccess && <div className="bg-emerald-900/30 border border-emerald-700 text-emerald-400 px-3 py-2 rounded-lg mb-3 text-sm">✓ {paySuccess}</div>}
                   <form onSubmit={handleAddPayment} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="label">Amount (₹) <span className="text-red-400">*</span></label>
@@ -629,9 +813,7 @@ export default function Service() {
                           <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
                           <td className="px-3 py-2 text-slate-300">{fmtDate(p.paymentDate)}</td>
                           <td className="px-3 py-2 text-emerald-400 font-semibold">{fmt(p.amount)}</td>
-                          <td className="px-3 py-2">
-                            <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">{p.method}</span>
-                          </td>
+                          <td className="px-3 py-2"><span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">{p.method}</span></td>
                           <td className="px-3 py-2 text-slate-400">{p.note || '—'}</td>
                         </tr>
                       ))}
