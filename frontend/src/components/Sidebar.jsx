@@ -9,7 +9,7 @@ const navItems = [
   { path: '/payments', label: 'Payments', icon: '💳' },
   { path: '/view-customer', label: 'View Customer', icon: '🔍' },
   { path: '/invoice', label: 'Invoice', icon: '🧾' },
-  { path: '/invoice-history', label: 'Invoice History', icon: '📋' },
+  { path: '/invoice-history', label: 'Invoice History', icon: '📂' },
   { path: '/vehicle-stock', label: 'Vehicle Stock', icon: '📦' },
   { path: '/spare-stock', label: 'Spare Stock', icon: '⚙️' },
 ];
@@ -35,7 +35,7 @@ export default function Sidebar() {
           </div>
         </div>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map(({ path, label, icon }) => (
           <NavLink key={path} to={path}
             className={({ isActive }) =>
