@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5002/api'
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api'
 });
 
 API.interceptors.request.use((config) => {
@@ -47,6 +47,8 @@ export const getDashboardStats = () => API.get('/dashboard-stats');
 // Vehicles
 export const addVehicle = (data) => API.post('/vehicles', data);
 export const getVehicles = () => API.get('/vehicles');
+export const searchVehicles = (q) => API.get(`/vehicles/search?q=${encodeURIComponent(q)}`);
+export const getVehicleByChassis = (chassisNo) => API.get(`/vehicles/chassis/${encodeURIComponent(chassisNo)}`);
 export const updateVehicle = (id, data) => API.put(`/vehicles/${id}`, data);
 export const deleteVehicle = (id) => API.delete(`/vehicles/${id}`);
 
@@ -55,5 +57,11 @@ export const addSpare = (data) => API.post('/spares', data);
 export const getSpares = () => API.get('/spares');
 export const updateSpare = (id, data) => API.put(`/spares/${id}`, data);
 export const deleteSpare = (id) => API.delete(`/spares/${id}`);
+
+// Invoices (stored in DB)
+export const saveInvoice = (data) => API.post('/invoices', data);
+export const getInvoices = (params) => API.get('/invoices', { params });
+export const getInvoiceById = (id) => API.get(`/invoices/${id}`);
+export const deleteInvoice = (id) => API.delete(`/invoices/${id}`);
 
 export default API;
